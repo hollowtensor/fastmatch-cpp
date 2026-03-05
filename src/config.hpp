@@ -19,6 +19,9 @@ struct ModelConfig {
     float reid_threshold = 0.42f;
     int max_gallery = 512;
 
+    // Saved sources
+    std::vector<std::string> rtsp_streams;
+
     static ModelConfig load(const std::string& path) {
         auto base_dir = fs::path(path).parent_path();
         YAML::Node y = YAML::LoadFile(path);
@@ -37,6 +40,11 @@ struct ModelConfig {
         m.detection_threshold = y["object_detection_threshold"].as<float>(0.3f);
         m.reid_threshold = y["feature_extraction_threshold"].as<float>(0.42f);
         m.max_gallery = y["max_gallery_set_each_person"].as<int>(512);
+
+        if (y["rtsp_streams"]) {
+            for (const auto& s : y["rtsp_streams"])
+                m.rtsp_streams.push_back(s.as<std::string>());
+        }
 
         return m;
     }
@@ -111,10 +119,8 @@ struct RuntimeOpts {
 
         o.config_path = "../config.yaml";
 
-        if (argc < 2) {
-            print_usage(argv[0]);
-            std::exit(0);
-        }
+        if (argc < 2)
+            return o;  // no args = use defaults (webcam)
 
         for (int i = 1; i < argc; i++) {
             std::string arg = argv[i];
@@ -134,10 +140,7 @@ struct RuntimeOpts {
                 while (i + 1 < argc && argv[i + 1][0] != '-') {
                     o.rtsp_urls.push_back(argv[++i]);
                 }
-                if (o.rtsp_urls.empty()) {
-                    std::cerr << "Error: --rtsp requires at least one URL\n";
-                    std::exit(1);
-                }
+                // empty is OK — will load from config.yaml
             }
             else if (arg == "--video") {
                 if (i + 1 >= argc) { std::cerr << "Error: --video requires a path\n"; std::exit(1); }
@@ -218,10 +221,7 @@ struct RuntimeOpts {
             }
         }
 
-        if (o.source_type == NONE) {
-            std::cerr << "Error: No source specified. Use --webcam, --rtsp, --video, or --dir\n";
-            std::exit(1);
-        }
+        // source_type == NONE is OK — config.yaml may have rtsp_streams
 
         return o;
     }

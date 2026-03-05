@@ -95,6 +95,43 @@ int main(int argc, char** argv) {
     std::cout << "Loading re-id model: " << mcfg.reid_model << std::endl;
     FeatureExtraction extractor(mcfg.reid_model, mcfg.device);
 
+    // Default to webcam if no source specified
+    if (opts.source_type == RuntimeOpts::NONE) {
+        opts.source_type = RuntimeOpts::WEBCAM;
+        std::cout << "No source specified, defaulting to webcam." << std::endl;
+    }
+
+    // If --rtsp with no URLs, let user pick from config
+    if (opts.source_type == RuntimeOpts::RTSP && opts.rtsp_urls.empty()) {
+        if (mcfg.rtsp_streams.empty()) {
+            std::cerr << "No RTSP streams in config.yaml" << std::endl;
+            return 1;
+        }
+        if (mcfg.rtsp_streams.size() == 1) {
+            opts.rtsp_urls = mcfg.rtsp_streams;
+        } else {
+            std::cout << "\nSaved RTSP streams:\n";
+            for (size_t i = 0; i < mcfg.rtsp_streams.size(); i++)
+                std::cout << "  [" << i + 1 << "] " << mcfg.rtsp_streams[i] << "\n";
+            std::cout << "  [a] All streams\n";
+            std::cout << "\nSelect (1-" << mcfg.rtsp_streams.size() << ", or 'a' for all): ";
+
+            std::string input;
+            std::getline(std::cin, input);
+
+            if (input == "a" || input == "A") {
+                opts.rtsp_urls = mcfg.rtsp_streams;
+            } else {
+                int idx = std::stoi(input) - 1;
+                if (idx < 0 || idx >= static_cast<int>(mcfg.rtsp_streams.size())) {
+                    std::cerr << "Invalid selection." << std::endl;
+                    return 1;
+                }
+                opts.rtsp_urls.push_back(mcfg.rtsp_streams[idx]);
+            }
+        }
+    }
+
     // Open sources
     auto cameras = open_sources(opts);
     int total_cam = static_cast<int>(cameras.size());
@@ -156,7 +193,7 @@ int main(int argc, char** argv) {
     std::unordered_map<int, int> person_last_crossed;
     std::unordered_map<int, int> person_last_seen;
     std::deque<std::string> person_events;
-    const int CROSSING_COOLDOWN = 20;
+    const int CROSSING_COOLDOWN = 3;  // low to catch fast crossings
 
     const cv::Size cam_size(opts.width, opts.height);
     const cv::Size det_size(detector.model_width(), detector.model_height());
@@ -316,14 +353,15 @@ int main(int argc, char** argv) {
                 for (auto& [pid, rec] : persons) {
                     if (rec.camera_id != cam_i || !active_this_frame.count(pid)) continue;
 
-                    int cx = (rec.bbox.x * 2 + rec.bbox.width) / 2;
-                    int cy = (rec.bbox.y * 2 + rec.bbox.height) / 2;
+                    int cx = rec.bbox.x + rec.bbox.width / 2;
+                    int cy = rec.bbox.y + rec.bbox.height / 2;
                     float sv = line_side(line_p1, line_p2, cx, cy);
                     std::string current = (sv > 0) ? "A" : "B";
 
                     if (person_side.count(pid)) {
                         const auto& prev = person_side[pid];
-                        int since = frame_num - person_last_crossed[pid];
+                        int since = frame_num - person_last_crossed.count(pid) ?
+                            frame_num - person_last_crossed[pid] : 999;
                         if (prev != current && since > CROSSING_COOLDOWN) {
                             bool is_entry = (entry_sign > 0 && prev == "A") ||
                                             (entry_sign < 0 && prev == "B");
@@ -350,8 +388,8 @@ int main(int argc, char** argv) {
                     cv::Point(rec.bbox.x, std::max(rec.bbox.y - 10, 0)),
                     cv::FONT_HERSHEY_PLAIN, 1, rec.color, 2);
 
-                int acx = (rec.bbox.x * 2 + rec.bbox.width) / 2;
-                int acy = (rec.bbox.y * 2 + rec.bbox.height) / 2;
+                int acx = rec.bbox.x + rec.bbox.width / 2;
+                int acy = rec.bbox.y + rec.bbox.height / 2;
 
                 if (opts.line_enabled) {
                     const auto& ps = person_side[pid];
