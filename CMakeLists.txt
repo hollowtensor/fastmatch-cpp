@@ -83,3 +83,60 @@ target_link_libraries(fastmatch PRIVATE
 
 # Optimize for speed
 target_compile_options(fastmatch PRIVATE -O3 -march=native)
+
+# Optional FAISS support (ON by default if found)
+option(USE_FAISS "Use FAISS for fast similarity search" ON)
+
+set(FAISS_FOUND FALSE)
+if(USE_FAISS)
+    if(APPLE)
+        set(FAISS_SEARCH_PATHS /opt/homebrew/opt/faiss /usr/local/opt/faiss /opt/homebrew /usr/local)
+    else()
+        set(FAISS_SEARCH_PATHS /usr/local /usr)
+    endif()
+
+    find_path(FAISS_INCLUDE_DIR
+        NAMES faiss/IndexFlat.h
+        PATHS ${FAISS_SEARCH_PATHS}
+        PATH_SUFFIXES include
+    )
+    find_library(FAISS_LIBRARY
+        NAMES faiss
+        PATHS ${FAISS_SEARCH_PATHS}
+        PATH_SUFFIXES lib
+    )
+
+    if(FAISS_INCLUDE_DIR AND FAISS_LIBRARY)
+        set(FAISS_FOUND TRUE)
+        message(STATUS "FAISS found: ${FAISS_LIBRARY}")
+    else()
+        message(STATUS "FAISS not found — falling back to linear search")
+    endif()
+endif()
+
+# Face detection & recognition demo
+add_executable(face_demo
+    src/faceid/face_demo.cpp
+    src/faceid/scrfd.cpp
+    src/faceid/arcface.cpp
+    src/faceid/face_db.cpp
+)
+
+target_include_directories(face_demo PRIVATE
+    ${OpenCV_INCLUDE_DIRS}
+    ${ONNXRUNTIME_INCLUDE_DIR}
+    src/faceid
+)
+
+target_link_libraries(face_demo PRIVATE
+    ${OpenCV_LIBS}
+    ${ONNXRUNTIME_LIBRARY}
+)
+
+if(FAISS_FOUND)
+    target_compile_definitions(face_demo PRIVATE USE_FAISS)
+    target_include_directories(face_demo PRIVATE ${FAISS_INCLUDE_DIR})
+    target_link_libraries(face_demo PRIVATE ${FAISS_LIBRARY})
+endif()
+
+target_compile_options(face_demo PRIVATE -O3 -march=native)

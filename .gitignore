@@ -1,7 +1,9 @@
 build/
 pretrained_models/
+weights/
 *.avi
 *.mp4
 calibration.yaml
+face_db.yaml
 .DS_Store
 compile_commands.json
