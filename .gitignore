@@ -1,0 +1,7 @@
+build/
+pretrained_models/
+*.avi
+*.mp4
+calibration.yaml
+.DS_Store
+compile_commands.json
