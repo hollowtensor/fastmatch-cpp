@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Find dependencies
 find_package(OpenCV REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(Eigen3 REQUIRED NO_MODULE)
 
 # ONNX Runtime — user can set ONNXRUNTIME_ROOT or we try pkg-config / brew
 if(NOT ONNXRUNTIME_ROOT)
@@ -60,12 +61,22 @@ endif()
 message(STATUS "ONNX Runtime include: ${ONNXRUNTIME_INCLUDE_DIR}")
 message(STATUS "ONNX Runtime library: ${ONNXRUNTIME_LIBRARY}")
 
+# ByteTrack sources
+set(BYTETRACK_SOURCES
+    src/bytetrack/BYTETracker.cpp
+    src/bytetrack/STrack.cpp
+    src/bytetrack/KalmanFilter.cpp
+    src/bytetrack/Rect.cpp
+    src/bytetrack/lapjv.cpp
+)
+
 # Build executable
 add_executable(fastmatch
     src/main.cpp
     src/object_detection.cpp
     src/feature_extraction.cpp
     src/helpers.cpp
+    ${BYTETRACK_SOURCES}
 )
 
 target_include_directories(fastmatch PRIVATE
@@ -79,10 +90,36 @@ target_link_libraries(fastmatch PRIVATE
     ${OpenCV_LIBS}
     ${ONNXRUNTIME_LIBRARY}
     yaml-cpp::yaml-cpp
+    Eigen3::Eigen
 )
 
 # Optimize for speed
 target_compile_options(fastmatch PRIVATE -O3 -march=native)
+
+# ByteTrack demo — detector + ByteTrack only (no Re-ID)
+add_executable(bytetrack_demo
+    src/bytetrack_demo.cpp
+    src/object_detection.cpp
+    src/feature_extraction.cpp
+    src/helpers.cpp
+    ${BYTETRACK_SOURCES}
+)
+
+target_include_directories(bytetrack_demo PRIVATE
+    ${OpenCV_INCLUDE_DIRS}
+    ${ONNXRUNTIME_INCLUDE_DIR}
+    ${YAML_CPP_INCLUDE_DIR}
+    src
+)
+
+target_link_libraries(bytetrack_demo PRIVATE
+    ${OpenCV_LIBS}
+    ${ONNXRUNTIME_LIBRARY}
+    yaml-cpp::yaml-cpp
+    Eigen3::Eigen
+)
+
+target_compile_options(bytetrack_demo PRIVATE -O3 -march=native)
 
 # Optional FAISS support (ON by default if found)
 option(USE_FAISS "Use FAISS for fast similarity search" ON)
